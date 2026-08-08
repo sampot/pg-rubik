@@ -44,8 +44,11 @@ function main() {
   let timerAcc = 0;
   let ticking = null;
   let soundOn = true;
-  let busy = false;
   let solvedLatched = true;
+
+  /** @type {string[]} */
+  const queue = [];
+  let draining = false;
 
   view.paint(faces);
 
@@ -55,7 +58,8 @@ function main() {
 
   function refreshMeters() {
     movesEl.textContent = String(moves);
-    const ms = timerStarted != null ? timerAcc + (Date.now() - timerStarted) : timerAcc;
+    const ms =
+      timerStarted != null ? timerAcc + (Date.now() - timerStarted) : timerAcc;
     timeEl.textContent = formatMs(ms);
   }
 
@@ -135,35 +139,62 @@ function main() {
     }
   }
 
-  function afterMove() {
-    refreshMeters();
-    view.paint(faces);
-    if (!solvedLatched && isSolved(faces)) {
-      void onSolved();
+  async function drainQueue() {
+    if (draining) return;
+    draining = true;
+    while (queue.length) {
+      const move = queue.shift();
+      await runMove(move);
     }
+    draining = false;
   }
 
-  function doMove(move) {
-    if (busy) return;
+  /**
+   * @param {string} move
+   * @param {{ animate?: boolean, record?: boolean }} [opts]
+   */
+  async function runMove(move, opts = {}) {
+    const animate = opts.animate !== false;
+    const record = opts.record !== false;
+
     if (solvedLatched && isSolved(faces)) {
-      // allow turning a solved cube (restarts play)
       solvedLatched = false;
       moves = 0;
       timerAcc = 0;
       timerStarted = null;
       history = [];
     }
+
+    if (animate) {
+      await view.animateTurn(move);
+    }
     const norm = applyMove(faces, move);
-    history.push(norm);
-    moves += 1;
-    startTimer();
-    beep();
-    afterMove();
-    setStatus(`轉了 ${norm}`);
+    view.paint(faces);
+    if (record) {
+      history.push(norm);
+      moves += 1;
+      startTimer();
+      beep();
+      setStatus(`轉了 ${norm}`);
+    }
+    refreshMeters();
+    if (!solvedLatched && isSolved(faces)) {
+      await onSolved();
+    }
+  }
+
+  function enqueueMove(move) {
+    if (!move) return;
+    // Cap queue so spam taps don't pile up forever
+    if (queue.length >= 8) return;
+    queue.push(move);
+    void drainQueue();
   }
 
   function scramble() {
-    if (busy) return;
+    if (draining || queue.length) {
+      queue.length = 0;
+    }
     stopTimer();
     faces = solvedCube();
     const seq = scrambleMoves(22);
@@ -179,15 +210,28 @@ function main() {
   }
 
   function undo() {
-    if (busy || !history.length) return;
+    if (!history.length || draining || queue.length) return;
     const last = history.pop();
-    applyMove(faces, invertMove(last));
-    moves = Math.max(0, moves - 1);
-    afterMove();
-    setStatus("復原一步");
+    const inv = invertMove(last);
+    void (async () => {
+      draining = true;
+      await view.animateTurn(inv);
+      applyMove(faces, inv);
+      view.paint(faces);
+      moves = Math.max(0, moves - 1);
+      refreshMeters();
+      setStatus("復原一步");
+      beep();
+      if (!solvedLatched && isSolved(faces)) {
+        await onSolved();
+      }
+      draining = false;
+      void drainQueue();
+    })();
   }
 
   function resetSolved() {
+    queue.length = 0;
     stopTimer();
     faces = solvedCube();
     history = [];
@@ -196,11 +240,11 @@ function main() {
     solvedLatched = true;
     view.paint(faces);
     refreshMeters();
-    setStatus("已重置為還原狀態");
+    setStatus("已重置為已還原狀態");
     confirmEl.hidden = true;
   }
 
-  // Orbit: drag on scene background
+  // Orbit: drag on scene background (not during layer anim if possible)
   let drag = null;
   scene.addEventListener("pointerdown", e => {
     if (e.target.closest(".sticker")) return;
@@ -221,12 +265,11 @@ function main() {
     drag = null;
   });
 
-  // Sticker tap → turn that face clockwise (simple mobile path)
   scene.addEventListener("click", e => {
     const st = e.target.closest(".sticker");
     if (!st) return;
     const face = st.dataset.face;
-    if (face) doMove(face);
+    if (face) enqueueMove(face);
   });
 
   $("btn-scramble").addEventListener("click", scramble);
@@ -253,13 +296,15 @@ function main() {
   });
 
   for (const btn of document.querySelectorAll("[data-move]")) {
-    btn.addEventListener("click", () => doMove(btn.getAttribute("data-move")));
+    btn.addEventListener("click", () =>
+      enqueueMove(btn.getAttribute("data-move"))
+    );
   }
 
   refreshMeters();
   void loadScores();
   void loadPrefs();
-  setStatus("拖曳轉看；點色塊或下方按鈕轉層；「打亂」開始計時");
+  setStatus("拖曳轉看；點色塊或下方按鈕轉層（有轉動動畫）");
 }
 
 main();

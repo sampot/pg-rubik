@@ -91,37 +91,64 @@ header .tag {
   display: grid;
   place-items: center;
   transform-style: preserve-3d;
+  transform-origin: center center;
 }
 
 .cube {
-  width: 180px;
-  height: 180px;
+  width: 0;
+  height: 0;
   position: relative;
   transform-style: preserve-3d;
 }
 
-.cube-face {
+.layer-pivot {
   position: absolute;
-  width: 180px;
-  height: 180px;
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  grid-template-rows: repeat(3, 1fr);
-  gap: 4px;
-  padding: 4px;
-  backface-visibility: hidden;
-  background: #111;
-  border-radius: 6px;
+  inset: 0;
+  transform-style: preserve-3d;
+  transform: rotateX(0deg) rotateY(0deg) rotateZ(0deg);
 }
 
-.sticker {
+.cubie {
+  position: absolute;
+  width: 56px;
+  height: 56px;
+  margin: -28px 0 0 -28px;
+  transform-style: preserve-3d;
+}
+
+.cubie .sticker {
+  position: absolute;
+  width: 52px;
+  height: 52px;
+  left: 2px;
+  top: 2px;
   border: none;
   border-radius: 6px;
   padding: 0;
-  min-width: 0;
-  min-height: 0;
-  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.25);
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.28);
   cursor: pointer;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+
+/* Stickers sit on cubie faces (half of 56px ≈ 28). */
+.cubie .sticker.face-U {
+  transform: rotateX(90deg) translateZ(28px);
+}
+.cubie .sticker.face-D {
+  transform: rotateX(-90deg) translateZ(28px);
+}
+.cubie .sticker.face-F {
+  transform: translateZ(28px);
+}
+.cubie .sticker.face-B {
+  transform: rotateY(180deg) translateZ(28px);
+}
+.cubie .sticker.face-L {
+  transform: rotateY(-90deg) translateZ(28px);
+}
+.cubie .sticker.face-R {
+  transform: rotateY(90deg) translateZ(28px);
 }
 
 .status {
