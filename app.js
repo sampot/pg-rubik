@@ -135,7 +135,7 @@ function main() {
       });
       await loadScores();
     } catch {
-      setStatus("還原！（最佳紀錄未寫入——需要 functions／KV）");
+      setStatus("還原！（這次無法保存最佳紀錄）");
     }
   }
 
