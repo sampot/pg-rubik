@@ -1,8 +1,8 @@
 import { COLORS, FACE, FACE_NAMES } from "./cube.js";
 
 const CELL = 180 / 3;
-const TURN_MS = 220;
-const TURN_MS_180 = 300;
+const TURN_MS = 360;
+const TURN_MS_180 = 480;
 
 /** @typedef {[number, number, number]} Vec3 */
 /** @typedef {[Vec3, Vec3, Vec3]} Mat3 */
@@ -370,7 +370,8 @@ export function mountCube(root) {
 
     const ms = Math.abs(mathDeg) === 180 ? TURN_MS_180 : TURN_MS;
     await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
-    pivot.style.transition = `transform ${ms}ms cubic-bezier(0.2, 0.7, 0.2, 1)`;
+    // Ease-in-out: less snappy than hard ease-out (felt like a jump).
+    pivot.style.transition = `transform ${ms}ms cubic-bezier(0.4, 0.05, 0.2, 1)`;
     pivot.style.transform = `rotate${axis}(${cssDeg}deg)`;
     await waitTransition(pivot, ms);
 
