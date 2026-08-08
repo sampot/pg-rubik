@@ -166,16 +166,27 @@ function main() {
     }
 
     if (animate) {
+      // Cubies commit pose to match the CSS turn — do not paint() after
+      // (that was the post-turn recolor snap).
       await view.animateTurn(move);
-    }
-    const norm = applyMove(faces, move);
-    view.paint(faces);
-    if (record) {
-      history.push(norm);
-      moves += 1;
-      startTimer();
-      beep();
-      setStatus(`轉了 ${norm}`);
+      const norm = applyMove(faces, move);
+      if (record) {
+        history.push(norm);
+        moves += 1;
+        startTimer();
+        beep();
+        setStatus(`轉了 ${norm}`);
+      }
+    } else {
+      const norm = applyMove(faces, move);
+      view.paint(faces);
+      if (record) {
+        history.push(norm);
+        moves += 1;
+        startTimer();
+        beep();
+        setStatus(`轉了 ${norm}`);
+      }
     }
     refreshMeters();
     if (!solvedLatched && isSolved(faces)) {
@@ -217,7 +228,6 @@ function main() {
       draining = true;
       await view.animateTurn(inv);
       applyMove(faces, inv);
-      view.paint(faces);
       moves = Math.max(0, moves - 1);
       refreshMeters();
       setStatus("復原一步");
