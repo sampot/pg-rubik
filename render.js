@@ -1,14 +1,12 @@
 import { COLORS, FACE, FACE_NAMES } from "./cube.js";
 
-const SIZE = 180;
-const CELL = SIZE / 3;
+const CELL = 180 / 3;
 const TURN_MS = 220;
 const TURN_MS_180 = 300;
 
-/**
- * Facelet index on a face for cubie coords x,y,z ∈ {-1,0,1}.
- * Face layouts match cube.js cycles (0 top-left … 8 bottom-right).
- */
+/** @typedef {[number, number, number]} Vec3 */
+/** @typedef {[Vec3, Vec3, Vec3]} Mat3 */
+
 function faceletIndex(face, x, y, z) {
   switch (face) {
     case "U":
@@ -58,9 +56,74 @@ function cubiesOnLayer(face, x, y, z) {
   }
 }
 
+function matIdentity() {
+  return [
+    [1, 0, 0],
+    [0, 1, 0],
+    [0, 0, 1],
+  ];
+}
+
+function matMul(a, b) {
+  const r = matIdentity();
+  for (let i = 0; i < 3; i++) {
+    for (let j = 0; j < 3; j++) {
+      r[i][j] = a[i][0] * b[0][j] + a[i][1] * b[1][j] + a[i][2] * b[2][j];
+    }
+  }
+  return r;
+}
+
+function matMulVec(m, v) {
+  return [
+    m[0][0] * v[0] + m[0][1] * v[1] + m[0][2] * v[2],
+    m[1][0] * v[0] + m[1][1] * v[1] + m[1][2] * v[2],
+    m[2][0] * v[0] + m[2][1] * v[1] + m[2][2] * v[2],
+  ];
+}
+
+/** Right-handed rotation by mathDeg (multiples of 90) about axis. */
+function matRotateAxis(axis, mathDeg) {
+  const steps = ((Math.round(mathDeg / 90) % 4) + 4) % 4;
+  let m = matIdentity();
+  for (let s = 0; s < steps; s++) {
+    /** @type {Mat3} */
+    let r;
+    if (axis === "X") {
+      // +90 about X: y'=-z, z'=y
+      r = [
+        [1, 0, 0],
+        [0, 0, -1],
+        [0, 1, 0],
+      ];
+    } else if (axis === "Y") {
+      // +90 about Y: x'=z, z'=-x
+      r = [
+        [0, 0, 1],
+        [0, 1, 0],
+        [-1, 0, 0],
+      ];
+    } else {
+      // +90 about Z: x'=-y, y'=x
+      r = [
+        [0, -1, 0],
+        [1, 0, 0],
+        [0, 0, 1],
+      ];
+    }
+    m = matMul(r, m);
+  }
+  return m;
+}
+
+function roundVec(v) {
+  return [Math.round(v[0]), Math.round(v[1]), Math.round(v[2])];
+}
+
 /**
- * CSS transform for a move — must stay in lockstep with commitAfterTurn().
- * Quarter-turn magnitude: 1 | -1 | 2 (positive = CW looking at that face in cube.js).
+ * Math CW (cube.js) → axis + mathDeg (right-handed, +Y up).
+ * CSS has +Y down; conjugating by S=diag(1,-1,1) → CSS angle:
+ *   Y: same as mathDeg; X／Z: negate.
  */
 function turnMotion(move) {
   const m = String(move).trim().toUpperCase();
@@ -70,8 +133,6 @@ function turnMotion(move) {
   if (suf === "'") cw = -1;
   else if (suf === "2") cw = 2;
 
-  // Math degrees in Y-up／Z-forward／X-right space (must match cube.js CW).
-  // CSS 3D uses a Y-down-ish frame for rotate* — see animateTurn (cssDeg = -mathDeg).
   switch (face) {
     case "U":
       return { face, axis: "Y", mathDeg: cw * 90 };
@@ -90,64 +151,51 @@ function turnMotion(move) {
   }
 }
 
-/** One +90° about axis (right-handed, Y up, Z toward F, X toward R). */
-function rot90Plus(axis, x, y, z) {
-  if (axis === "X") return { x, y: -z, z: y };
-  if (axis === "Y") return { x: z, y, z: -x };
-  if (axis === "Z") return { x: -y, y: x, z };
-  return { x, y, z };
+/** CSS rotate* angle that matches matMathToCss(matRotateAxis(axis, mathDeg)). */
+function cssDegForAxis(axis, mathDeg) {
+  return axis === "Y" ? mathDeg : -mathDeg;
 }
 
-function rotateCoords(x, y, z, axis, deg) {
-  const steps = Math.round(deg / 90);
-  const n = Math.abs(steps);
-  const plus = steps >= 0;
-  let p = { x, y, z };
-  for (let i = 0; i < n; i++) {
-    if (plus) p = rot90Plus(axis, p.x, p.y, p.z);
-    else {
-      // -90 = 3× +90
-      p = rot90Plus(axis, p.x, p.y, p.z);
-      p = rot90Plus(axis, p.x, p.y, p.z);
-      p = rot90Plus(axis, p.x, p.y, p.z);
+/** Map math-space rotation (+Y up) into CSS matrix3d space (+Y down). */
+function matMathToCss(m) {
+  const s = [1, -1, 1];
+  const r = matIdentity();
+  for (let i = 0; i < 3; i++) {
+    for (let j = 0; j < 3; j++) {
+      r[i][j] = s[i] * m[i][j] * s[j];
     }
   }
-  return p;
+  return r;
 }
 
-/** Rotate sticker normals the same way as coords. */
-function rotateFaceLabel(face, axis, deg) {
-  const normals = {
-    U: { x: 0, y: 1, z: 0 },
-    D: { x: 0, y: -1, z: 0 },
-    F: { x: 0, y: 0, z: 1 },
-    B: { x: 0, y: 0, z: -1 },
-    L: { x: -1, y: 0, z: 0 },
-    R: { x: 1, y: 0, z: 0 },
-  };
-  const n0 = normals[face];
-  if (!n0) return face;
-  const n = rotateCoords(n0.x, n0.y, n0.z, axis, deg);
-  if (n.y === 1) return "U";
-  if (n.y === -1) return "D";
-  if (n.z === 1) return "F";
-  if (n.z === -1) return "B";
-  if (n.x === -1) return "L";
-  if (n.x === 1) return "R";
-  return face;
+/** Local +X/+Y/+Z sticker → world face name from cubie rotation. */
+function localToWorldFace(localFace, rot) {
+  const local = {
+    R: [1, 0, 0],
+    L: [-1, 0, 0],
+    U: [0, 1, 0],
+    D: [0, -1, 0],
+    F: [0, 0, 1],
+    B: [0, 0, -1],
+  }[localFace];
+  if (!local) return localFace;
+  const [x, y, z] = roundVec(matMulVec(rot, local));
+  if (y === 1) return "U";
+  if (y === -1) return "D";
+  if (z === 1) return "F";
+  if (z === -1) return "B";
+  if (x === -1) return "L";
+  if (x === 1) return "R";
+  return localFace;
 }
 
-function remapColors(colors, axis, deg) {
-  /** @type {Record<string, number>} */
-  const next = {};
-  for (const [face, color] of Object.entries(colors)) {
-    next[rotateFaceLabel(face, axis, deg)] = color;
-  }
-  return next;
-}
-
-function cubieBaseTransform(x, y, z) {
-  return `translate3d(${x * CELL}px, ${-y * CELL}px, ${z * CELL}px)`;
+function cubieCssTransform(x, y, z, rotMath) {
+  // matrix3d is column-major; rot is math-space, convert for CSS +Y-down.
+  const m = matMathToCss(rotMath);
+  const tx = x * CELL;
+  const ty = -y * CELL;
+  const tz = z * CELL;
+  return `matrix3d(${m[0][0]},${m[1][0]},${m[2][0]},0,${m[0][1]},${m[1][1]},${m[2][1]},0,${m[0][2]},${m[1][2]},${m[2][2]},0,${tx},${ty},${tz},1)`;
 }
 
 function waitTransition(el, ms) {
@@ -168,7 +216,6 @@ function waitTransition(el, ms) {
 }
 
 /**
- * Build CSS 3D cube from 26 cubies. Orbit on .cube-orbit.
  * @param {HTMLElement} root
  */
 export function mountCube(root) {
@@ -181,37 +228,55 @@ export function mountCube(root) {
   cube.className = "cube";
 
   /**
+   * Physical cubie: sticker colors are fixed on LOCAL faces; only pos＋rot change.
    * @type {{
    *   x:number, y:number, z:number,
-   *   el:HTMLElement,
+   *   rot: Mat3,
+   *   el: HTMLElement,
    *   stickers: Record<string, HTMLElement>,
-   *   colors: Record<string, number>
+   *   localColors: Record<string, number>
    * }[]}
    */
   const cubies = [];
 
-  function createSticker(face, color) {
+  function createSticker(localFace, color) {
     const st = document.createElement("button");
     st.type = "button";
-    st.className = `sticker face-${face}`;
-    st.dataset.face = face;
-    st.setAttribute("aria-label", face);
+    st.className = `sticker face-${localFace}`;
+    st.dataset.localFace = localFace;
     st.style.background = COLORS[color];
+    st.addEventListener("click", e => {
+      e.stopPropagation();
+      const cubie = cubies.find(c => c.stickers[localFace] === st);
+      if (!cubie) return;
+      const world = localToWorldFace(localFace, cubie.rot);
+      st.dataset.face = world;
+      root.dispatchEvent(
+        new CustomEvent("cubie-face-click", { detail: { face: world } })
+      );
+    });
     return st;
   }
 
-  function applyCubieVisual(c) {
-    c.el.style.transform = cubieBaseTransform(c.x, c.y, c.z);
-    c.el.dataset.x = String(c.x);
-    c.el.dataset.y = String(c.y);
-    c.el.dataset.z = String(c.z);
+  function applyCubieTransform(c) {
+    c.el.style.transform = cubieCssTransform(c.x, c.y, c.z, c.rot);
+    // Expose world face on stickers for accessibility／fallback
+    for (const [local, st] of Object.entries(c.stickers)) {
+      const world = localToWorldFace(local, c.rot);
+      st.dataset.face = world;
+      st.setAttribute("aria-label", world);
+    }
+  }
+
+  function mountStickers(c) {
     c.el.innerHTML = "";
     c.stickers = {};
-    for (const [face, color] of Object.entries(c.colors)) {
-      const st = createSticker(face, color);
-      c.stickers[face] = st;
+    for (const [local, color] of Object.entries(c.localColors)) {
+      const st = createSticker(local, color);
+      c.stickers[local] = st;
       c.el.appendChild(st);
     }
+    applyCubieTransform(c);
   }
 
   for (let x = -1; x <= 1; x++) {
@@ -221,12 +286,20 @@ export function mountCube(root) {
         const el = document.createElement("div");
         el.className = "cubie";
         /** @type {Record<string, number>} */
-        const colors = {};
+        const localColors = {};
         for (const f of worldFacesAt(x, y, z)) {
-          colors[f] = FACE[f];
+          localColors[f] = FACE[f];
         }
-        const c = { x, y, z, el, stickers: {}, colors };
-        applyCubieVisual(c);
+        const c = {
+          x,
+          y,
+          z,
+          rot: matIdentity(),
+          el,
+          stickers: {},
+          localColors,
+        };
+        mountStickers(c);
         cube.appendChild(el);
         cubies.push(c);
       }
@@ -245,23 +318,36 @@ export function mountCube(root) {
 
   let animating = false;
 
-  /** Sync cubie colors／slots from facelet model (scramble／reset／load). */
+  /**
+   * Reset cubies from facelets (scramble／reset). Stickers recolored; rot = I.
+   * @param {number[][]} faces
+   */
   function paint(faces) {
-    for (const c of cubies) {
-      /** @type {Record<string, number>} */
-      const colors = {};
-      for (const fname of worldFacesAt(c.x, c.y, c.z)) {
-        const fi = FACE[fname];
-        const idx = faceletIndex(fname, c.x, c.y, c.z);
-        colors[fname] = faces[fi][idx];
+    let i = 0;
+    for (let x = -1; x <= 1; x++) {
+      for (let y = -1; y <= 1; y++) {
+        for (let z = -1; z <= 1; z++) {
+          if (x === 0 && y === 0 && z === 0) continue;
+          const c = cubies[i++];
+          c.x = x;
+          c.y = y;
+          c.z = z;
+          c.rot = matIdentity();
+          /** @type {Record<string, number>} */
+          const localColors = {};
+          for (const fname of worldFacesAt(x, y, z)) {
+            localColors[fname] =
+              faces[FACE[fname]][faceletIndex(fname, x, y, z)];
+          }
+          c.localColors = localColors;
+          mountStickers(c);
+          if (c.el.parentElement !== cube) cube.appendChild(c.el);
+        }
       }
-      c.colors = colors;
-      applyCubieVisual(c);
     }
   }
 
   /**
-   * Animate a turn, then move cubies to the post-rotation slots (no recolor snap).
    * @param {string} move
    */
   async function animateTurn(move) {
@@ -269,8 +355,8 @@ export function mountCube(root) {
     const motion = turnMotion(move);
     if (!motion.mathDeg) return;
     const { face, axis, mathDeg } = motion;
-    // Flip for CSS so the animated arc matches Y-up math／cube.js (and commit).
-    const cssDeg = -mathDeg;
+    const cssDeg = cssDegForAxis(axis, mathDeg);
+    const R = matRotateAxis(axis, mathDeg);
 
     animating = true;
     const layer = cubies.filter(c => cubiesOnLayer(face, c.x, c.y, c.z));
@@ -288,18 +374,17 @@ export function mountCube(root) {
     pivot.style.transform = `rotate${axis}(${cssDeg}deg)`;
     await waitTransition(pivot, ms);
 
-    // Commit in math space (= cube.js); equals where CSS left the pieces after cssDeg.
+    // Bake math pose to match the finished CSS turn. Sticker DOM never changes.
     pivot.style.transition = "none";
     for (const c of layer) {
-      const next = rotateCoords(c.x, c.y, c.z, axis, mathDeg);
-      c.colors = remapColors(c.colors, axis, mathDeg);
-      c.x = next.x;
-      c.y = next.y;
-      c.z = next.z;
-      applyCubieVisual(c);
+      const p = roundVec(matMulVec(R, [c.x, c.y, c.z]));
+      c.x = p[0];
+      c.y = p[1];
+      c.z = p[2];
+      c.rot = matMul(R, c.rot);
+      applyCubieTransform(c);
       cube.appendChild(c.el);
     }
-    pivot.style.transform = "";
     pivot.remove();
     animating = false;
   }

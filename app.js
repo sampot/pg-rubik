@@ -275,6 +275,10 @@ function main() {
     drag = null;
   });
 
+  scene.addEventListener("cubie-face-click", e => {
+    const face = e.detail?.face;
+    if (face) enqueueMove(face);
+  });
   scene.addEventListener("click", e => {
     const st = e.target.closest(".sticker");
     if (!st) return;
