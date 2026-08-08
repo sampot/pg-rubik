@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, viewport-fit=cover"
+    />
+    <meta name="color-scheme" content="dark" />
+    <meta
+      name="description"
+      content="3×3 魔術方塊：拖曳轉看、轉層、打亂與計時。Playgrounds SAM；分數經 functions.js → env.KV。"
+    />
+    <title>魔術方塊</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main>
+      <header>
+        <h1>魔術方塊</h1>
+        <p class="tag">3×3 · 轉看／轉層 · 本機最佳經 KV</p>
+      </header>
+
+      <section class="meter" aria-label="對局狀態">
+        <div>步數 <strong id="moves">0</strong></div>
+        <div>時間 <strong id="time">0:00</strong></div>
+        <div>最佳 <strong id="best">—</strong></div>
+        <div class="meter-actions">
+          <button type="button" id="btn-mute" aria-pressed="true">音效開</button>
+        </div>
+      </section>
+
+      <div id="cube-root" class="cube-scene" aria-label="立體魔術方塊"></div>
+      <p id="status" class="status" role="status"></p>
+
+      <div class="toolbar">
+        <button type="button" class="primary" id="btn-scramble">打亂</button>
+        <button type="button" id="btn-undo">復原一步</button>
+        <button type="button" class="danger" id="btn-reset">重置</button>
+      </div>
+
+      <div class="moves" role="group" aria-label="轉層">
+        <button type="button" data-move="U">U</button>
+        <button type="button" data-move="U'">U'</button>
+        <button type="button" data-move="D">D</button>
+        <button type="button" data-move="D'">D'</button>
+        <button type="button" data-move="L">L</button>
+        <button type="button" data-move="L'">L'</button>
+        <button type="button" data-move="R">R</button>
+        <button type="button" data-move="R'">R'</button>
+        <button type="button" data-move="F">F</button>
+        <button type="button" data-move="F'">F'</button>
+        <button type="button" data-move="B">B</button>
+        <button type="button" data-move="B'">B'</button>
+      </div>
+
+      <p class="hint">
+        空白處拖曳＝轉看；點色塊＝轉該面；分數寫入
+        <code>env.KV</code>（經 <code>/api/scores</code>）。
+      </p>
+
+      <div id="confirm" class="confirm" hidden>
+        <p>重置為已還原狀態？目前步數與計時會清除（最佳紀錄保留）。</p>
+        <div class="row">
+          <button type="button" id="btn-confirm-cancel">取消</button>
+          <button type="button" class="danger" id="btn-confirm-ok">確定重置</button>
+        </div>
+      </div>
+    </main>
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>
