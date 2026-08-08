@@ -70,23 +70,23 @@ function turnMotion(move) {
   if (suf === "'") cw = -1;
   else if (suf === "2") cw = 2;
 
-  // Map cube.js clockwise (looking at that face) → CSS degrees.
-  // Must match commitAfterTurn coords／sticker remap or facelets desync.
+  // Math degrees in Y-up／Z-forward／X-right space (must match cube.js CW).
+  // CSS 3D uses a Y-down-ish frame for rotate* — see animateTurn (cssDeg = -mathDeg).
   switch (face) {
     case "U":
-      return { face, axis: "Y", deg: cw * 90 };
+      return { face, axis: "Y", mathDeg: cw * 90 };
     case "D":
-      return { face, axis: "Y", deg: -cw * 90 };
+      return { face, axis: "Y", mathDeg: -cw * 90 };
     case "F":
-      return { face, axis: "Z", deg: -cw * 90 };
+      return { face, axis: "Z", mathDeg: -cw * 90 };
     case "B":
-      return { face, axis: "Z", deg: cw * 90 };
+      return { face, axis: "Z", mathDeg: cw * 90 };
     case "L":
-      return { face, axis: "X", deg: cw * 90 };
+      return { face, axis: "X", mathDeg: cw * 90 };
     case "R":
-      return { face, axis: "X", deg: -cw * 90 };
+      return { face, axis: "X", mathDeg: -cw * 90 };
     default:
-      return { face, axis: "Y", deg: 0 };
+      return { face, axis: "Y", mathDeg: 0 };
   }
 }
 
@@ -267,8 +267,10 @@ export function mountCube(root) {
   async function animateTurn(move) {
     if (animating) return;
     const motion = turnMotion(move);
-    if (!motion.deg) return;
-    const { face, axis, deg } = motion;
+    if (!motion.mathDeg) return;
+    const { face, axis, mathDeg } = motion;
+    // Flip for CSS so the animated arc matches Y-up math／cube.js (and commit).
+    const cssDeg = -mathDeg;
 
     animating = true;
     const layer = cubies.filter(c => cubiesOnLayer(face, c.x, c.y, c.z));
@@ -280,18 +282,17 @@ export function mountCube(root) {
       pivot.appendChild(c.el);
     }
 
-    const ms = Math.abs(deg) === 180 ? TURN_MS_180 : TURN_MS;
+    const ms = Math.abs(mathDeg) === 180 ? TURN_MS_180 : TURN_MS;
     await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
     pivot.style.transition = `transform ${ms}ms cubic-bezier(0.2, 0.7, 0.2, 1)`;
-    pivot.style.transform = `rotate${axis}(${deg}deg)`;
+    pivot.style.transform = `rotate${axis}(${cssDeg}deg)`;
     await waitTransition(pivot, ms);
 
-    // Commit logical cubie pose to match the finished CSS rotation, then
-    // drop the pivot at identity — visuals stay continuous (no paint snap).
+    // Commit in math space (= cube.js); equals where CSS left the pieces after cssDeg.
     pivot.style.transition = "none";
     for (const c of layer) {
-      const next = rotateCoords(c.x, c.y, c.z, axis, deg);
-      c.colors = remapColors(c.colors, axis, deg);
+      const next = rotateCoords(c.x, c.y, c.z, axis, mathDeg);
+      c.colors = remapColors(c.colors, axis, mathDeg);
       c.x = next.x;
       c.y = next.y;
       c.z = next.z;
